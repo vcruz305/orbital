@@ -1,0 +1,34 @@
+{
+  "name": "orbital",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "ORBITAL — a cinematic 3D Earth intelligence dashboard: live satellite tracking, air traffic, and rocket launches.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && gh-pages -d dist -b gh-pages"
+  },
+  "dependencies": {
+    "cesium": "^1.147.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "satellite.js": "^6.0.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "gh-pages": "^6.1.1",
+    "postcss": "^8.4.45",
+    "tailwindcss": "^3.4.10",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.3",
+    "vite-plugin-cesium": "^1.2.23"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}

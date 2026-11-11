@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#04070f" />
+    <meta name="description" content="ORBITAL — a cinematic 3D Earth intelligence platform. Live satellite tracking, global air traffic, and rocket launch intelligence in one command center." />
+    <title>ORBITAL · Earth Intelligence Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%230a1428'/%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%2338e1ff' stroke-width='2'/%3E%3Cellipse cx='16' cy='16' rx='15' ry='6' fill='none' stroke='%2338e1ff' stroke-width='1.4' opacity='0.7' transform='rotate(-24 16 16)'/%3E%3Ccircle cx='27' cy='9' r='2.4' fill='%23ffb347'/%3E%3C/svg%3E" />
+    <style>
+      html,body{margin:0;height:100%;background:#04070f;overflow:hidden}
+      #boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(1200px 800px at 50% 40%,#0a1428 0%,#04070f 70%);color:#9fb6d4;font-family:'Chakra Petch',system-ui,sans-serif;z-index:9999;transition:opacity .8s ease}
+      #boot .ring{width:74px;height:74px;border-radius:50%;border:2px solid rgba(56,225,255,.15);border-top-color:#38e1ff;animation:spin 1s linear infinite;margin-bottom:26px}
+      #boot h1{font-size:26px;letter-spacing:.42em;margin:0 0 10px;color:#e8f4ff;font-weight:600;text-indent:.42em}
+      #boot p{font-size:11px;letter-spacing:.3em;margin:0;opacity:.6;text-transform:uppercase}
+      @keyframes spin{to{transform:rotate(360deg)}}
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="boot"><div class="ring"></div><h1>ORBITAL</h1><p>Initializing Earth intelligence…</p></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
