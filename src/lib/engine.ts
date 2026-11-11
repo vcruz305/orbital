@@ -97,10 +97,13 @@ export class OrbitalEngine {
     this.launchIcon = makeLaunchIcon();
 
     this.viewer = new Cesium.Viewer(container, {
-      baseLayer: new Cesium.ImageryLayer(new Cesium.SingleTileImageryProvider({
-        url: textureUrl('earth_day.jpg'),
-        rectangle: Cesium.Rectangle.fromDegrees(-180, -90, 180, 90),
-        tileWidth: 4096, tileHeight: 2048,
+      baseLayer: new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
+        url: textureUrl('day/{z}/{x}/{y}.jpg'),
+        tilingScheme: new Cesium.GeographicTilingScheme(),
+        maximumLevel: 4,
+        tileWidth: 256, tileHeight: 256,
+        hasAlphaChannel: false,
+        credit: 'Earth imagery: Solar System Scope (CC BY 4.0)',
       })),
       terrain: new Cesium.Terrain(Promise.resolve(new Cesium.EllipsoidTerrainProvider())),
       baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false,
@@ -141,9 +144,13 @@ export class OrbitalEngine {
     this.nightLayer = this.viewer.imageryLayers.addImageryProvider(new Cesium.SingleTileImageryProvider({
       url: textureUrl('earth_night.png'),
       rectangle: Cesium.Rectangle.fromDegrees(-180, -90, 180, 90),
-      tileWidth: 2048, tileHeight: 1024,
+      tileWidth: 4096, tileHeight: 2048,
     }));
-    this.nightLayer.alpha = 0.95;
+    this.nightLayer.alpha = 1.0;
+    // City lights belong to the night side only; without this they wash over the
+    // day map as blocky blotches. dayAlpha/nightAlpha blend with globe.enableLighting.
+    this.nightLayer.dayAlpha = 0.0;
+    this.nightLayer.nightAlpha = 0.95;
     this.nightLayer.brightness = 1.5;
 
     this.cloudEntity = this.viewer.entities.add({
@@ -533,16 +540,23 @@ export class OrbitalEngine {
     this.following = follow;
     const sel = this.selectedId ? this.objects.get(this.selectedId) : null;
     if (sel) setState({ selection: { object: sel, following: follow } });
-    if (follow && sel) this.flyToObject(sel, 1.6);
+    if (follow && sel) this.flyToObject(sel, 1.6, true);
     if (!follow) this.viewer.trackedEntity = undefined;
   }
 
-  flyToObject(obj: TrackObject, duration = 2.0): void {
+  flyToObject(obj: TrackObject, duration = 2.0, close = false): void {
     setState({ activePreset: '' });
-    const height = obj.category === 'satellite' ? Math.max(obj.alt * 3, 3e6) : 2.5e6;
+    // Default: frame the whole Earth as a centered sphere with the object on the
+    // near side. Nadir pitch puts the object and Earth's center on the camera's
+    // vertical axis, so the globe lands dead-center (not pushed to the bottom).
+    // Stay above high-orbit satellites so they remain in frame. `close` is the
+    // tight approach used when engaging the follow/chase camera.
+    const height = close
+      ? (obj.category === 'satellite' ? Math.max(obj.alt * 3, 3e6) : 2.5e6)
+      : (obj.category === 'satellite' ? Math.max(obj.alt * 1.6, 2.2e7) : 2.2e7);
     this.scene.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(obj.lon, obj.lat, height),
-      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-60), roll: 0 },
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
       duration,
       easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
     });

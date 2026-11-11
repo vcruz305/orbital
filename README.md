@@ -44,7 +44,7 @@ Built with **React + TypeScript + CesiumJS + Tailwind CSS** and a premium dark, 
 | Satellites | [CelesTrak](https://celestrak.org) TLEs | **Live** (CORS-enabled) |
 | Launches | [Launch Library 2](https://thespacedevs.com) | **Live** (CORS-enabled) |
 | Aircraft | [OpenSky Network](https://opensky-network.org) | Live attempt → **labeled simulation** fallback (OpenSky restricts CORS to its own origin) |
-| Imagery | NASA Blue Marble / Black Marble | Bundled |
+| Imagery | [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0, NASA-derived) | Bundled · 8K day (tiled pyramid) / 4K lights / 2K clouds |
 
 ## Run locally
 

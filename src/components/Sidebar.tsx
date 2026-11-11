@@ -159,7 +159,7 @@ export function Sidebar({ engine }: { engine: OrbitalEngine | null }) {
       </div>
 
       <div className="px-4 py-2.5 border-t border-[rgba(56,225,255,0.1)] text-[8.5px] text-ink-faint leading-relaxed">
-        Imagery: NASA Blue Marble / Black Marble · Orbits: CelesTrak SGP4 · Launches: The Space Devs
+        Imagery: Solar System Scope (CC BY 4.0) · Orbits: CelesTrak SGP4 · Launches: The Space Devs
       </div>
     </aside>
   );
