@@ -67,6 +67,8 @@ The app uses a relative base path so it works both at a domain root and at a Git
 
 The render loop propagates the full catalog efficiently — ~600 satellites + ~320 aircraft update in roughly **3 ms of CPU per frame**, using point/billboard primitive collections (not per-object entities), a capped resolution scale, and a single `requestAnimationFrame`-driven loop. Orbit paths are drawn for a representative subset plus the selected object, and refresh on a slow cadence. On GPU-accelerated hardware the scene runs smoothly at full quality.
 
+Element sets are **stream-parsed** — the multi-MB Starlink catalog is read only up to the display cap, then the download is aborted — and **cached client-side** for CelesTrak's 2-hour update window, with a stale-cache fallback. CelesTrak refuses repeat downloads of unchanged data (HTTP 403), so this keeps reloads populated without re-hammering the service.
+
 ## Project structure
 
 ```
