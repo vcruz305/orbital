@@ -1,4 +1,4 @@
-import { buildSatRecord, parseTLE, type SatRecord } from './satellite';
+import { buildSatRecord, parseTLE, type SatRecord, type TLE } from './satellite';
 import type { DataStatus, LaunchInfo, SatGroup, TrackObject } from '../types';
 
 const BASE = import.meta.env.BASE_URL;
@@ -27,24 +27,127 @@ async function fetchText(url: string, timeoutMs: number): Promise<string> {
   }
 }
 
+/**
+ * Stream a CelesTrak TLE response and stop as soon as `cap` records are parsed.
+ * The Starlink file is several MB / thousands of satellites; reading only the
+ * first `cap` triplets keeps the download tiny, fast and reliable instead of
+ * pulling the whole catalog and timing out.
+ */
+async function fetchTLEStream(url: string, cap: number, timeoutMs: number): Promise<TLE[]> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const reader = res.body?.getReader();
+    if (!reader) return parseTLE(await res.text()).slice(0, cap);
+
+    const decoder = new TextDecoder();
+    const tles: TLE[] = [];
+    let buf = '';
+    let pendingName: string | null = null;
+    let line1: string | null = null;
+
+    const feedLine = (raw: string) => {
+      const l = raw.trim();
+      if (!l) return;
+      if (l.startsWith('1 ')) {
+        line1 = l;
+      } else if (l.startsWith('2 ') && line1) {
+        const norad = line1.slice(2, 7).trim();
+        tles.push({ name: pendingName ?? `NORAD ${norad}`, line1, line2: l, norad });
+        line1 = null;
+        pendingName = null;
+      } else {
+        pendingName = l;
+        line1 = null;
+      }
+    };
+
+    while (tles.length < cap) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split(/\r?\n/);
+      buf = lines.pop() ?? '';
+      for (const ln of lines) {
+        feedLine(ln);
+        if (tles.length >= cap) break;
+      }
+    }
+    if (buf) feedLine(buf);
+    reader.cancel().catch(() => {});
+    ctrl.abort(); // stop downloading the remainder of the catalog
+    return tles.slice(0, cap);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// CelesTrak updates each group every ~2h and refuses repeat downloads of
+// unchanged data (HTTP 403). Cache element sets client-side for that window so
+// reloads stay populated without re-hammering the service, and fall back to the
+// last good cache if a refresh is refused or the network drops.
+const TLE_CACHE_TTL = 2 * 60 * 60 * 1000;
+const tleCacheKey = (g: SatGroup) => `orbital.tle.${g}`;
+
+function readTleCache(g: SatGroup): { ts: number; tles: TLE[] } | null {
+  try {
+    const raw = localStorage.getItem(tleCacheKey(g));
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (p && typeof p.ts === 'number' && Array.isArray(p.tles)) return p;
+  } catch {
+    /* storage unavailable */
+  }
+  return null;
+}
+
+function writeTleCache(g: SatGroup, tles: TLE[]): void {
+  try {
+    localStorage.setItem(tleCacheKey(g), JSON.stringify({ ts: Date.now(), tles }));
+  } catch {
+    /* storage full / unavailable — non-fatal */
+  }
+}
+
+async function fetchGroup(g: SatGroup): Promise<TLE[]> {
+  const cfg = SAT_GROUPS[g];
+  const cached = readTleCache(g);
+  if (cached && cached.tles.length && Date.now() - cached.ts < TLE_CACHE_TTL) {
+    return cached.tles; // fresh cache — no network request needed
+  }
+  // Starlink is the large catalog; give it more headroom. One retry on failure.
+  const timeout = g === 'starlink' ? 45000 : 25000;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const tles = await fetchTLEStream(cfg.url, cfg.cap, timeout);
+      if (tles.length) {
+        writeTleCache(g, tles);
+        return tles;
+      }
+    } catch {
+      /* retry once below */
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 700));
+  }
+  // Refresh refused (403 repeat-download guard) or offline: keep last good data.
+  if (cached && cached.tles.length) return cached.tles;
+  return [];
+}
+
 export async function fetchSatellites(): Promise<{ sats: SatRecord[]; status: DataStatus }> {
   const groups = Object.keys(SAT_GROUPS) as SatGroup[];
   const sats: SatRecord[] = [];
   let okGroups = 0;
   await Promise.all(
     groups.map(async (g) => {
-      const cfg = SAT_GROUPS[g];
-      try {
-        const text = await fetchText(cfg.url, 30000);
-        const tles = parseTLE(text).slice(0, cfg.cap);
-        for (const tle of tles) {
-          const rec = buildSatRecord(tle, g);
-          if (rec) sats.push(rec);
-        }
-        if (tles.length) okGroups++;
-      } catch {
-        /* group unavailable; continue with others */
+      const tles = await fetchGroup(g);
+      for (const tle of tles) {
+        const rec = buildSatRecord(tle, g);
+        if (rec) sats.push(rec);
       }
+      if (tles.length) okGroups++;
     }),
   );
   const status: DataStatus = {
