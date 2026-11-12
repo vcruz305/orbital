@@ -1,0 +1,8 @@
+name = "orbital-flights"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+# Free Cloudflare Workers plan is sufficient. Deploy with:
+#   npx wrangler deploy
+# Then set the printed https://orbital-flights.<your-account>.workers.dev URL
+# in the app (src/lib/data.ts FLIGHT_PROXY_URL or localStorage['orbital.flightProxy']).

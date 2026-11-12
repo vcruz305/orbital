@@ -12,7 +12,7 @@ Built with **React + TypeScript + CesiumJS + Tailwind CSS** and a premium dark, 
 
 - **Photorealistic 3D globe** — NASA Blue Marble imagery, a rotating cloud shell, atmospheric limb glow, real Sun-driven day/night terminator, night-side city lights (Black Marble), a Milky Way starfield, and Sun/Moon rendering. Drag to orbit, scroll to zoom, with damped cinematic camera moves and an idle drift.
 - **Live satellite tracking** — real orbital element sets from **CelesTrak** propagated with **satellite.js (SGP4)**. Space Stations (ISS, CSS…), the GPS constellation, Starlink, bright/visual, weather and science satellites. Glowing category-colored markers, orbital ground tracks, altitude/velocity/inclination/period telemetry, and a locked **follow camera**.
-- **Air traffic** — attempts the live **OpenSky Network** feed; when the browser is blocked by OpenSky's CORS policy it transparently falls back to a clearly-labeled **simulated** great-circle traffic model flying real airport pairs. Heading-oriented aircraft icons, callsign/route/squawk/altitude/speed telemetry and motion trails.
+- **Air traffic** — real **ADS-B** transponder data from [adsb.lol](https://adsb.lol) / [adsb.fi](https://adsb.fi). These free feeds block cross-origin browser reads, so a tiny deployable **CORS proxy** (`proxy/`, a free Cloudflare Worker) relays them for a **LIVE** display; without it the app tries a best-effort public relay and otherwise falls back to a clearly-labeled **simulated** great-circle traffic model. Heading-oriented aircraft icons with callsign / type / registration / squawk / altitude / speed telemetry.
 - **Rocket launch intelligence** — live upcoming launches from **Launch Library 2** (SpaceX, NASA, ULA, Rocket Lab, Arianespace, ISRO, CNSA…). A docked **Launch Manifest** timeline with live T-minus countdowns, GO/TBC status, vehicle, mission, pad and launch site. Clicking a launch flies to its pad. Trajectories are shown only when real telemetry exists — never fabricated.
 - **Mission Control dashboard** — collapsible sidebars, live object counters, global search (aircraft / satellites / NORAD ID / launches), per-constellation filters, tracking & display layer toggles, an object information panel, camera presets, time-warp (1×/10×/60×/300×), and data-source health with retry.
 - **Honest data labeling** — every source shows LIVE / SIMULATED / OFFLINE status; simulated objects carry a SIM badge. No API keys are required or embedded.
@@ -43,8 +43,12 @@ Built with **React + TypeScript + CesiumJS + Tailwind CSS** and a premium dark, 
 |---|---|---|
 | Satellites | [CelesTrak](https://celestrak.org) TLEs | **Live** (CORS-enabled) |
 | Launches | [Launch Library 2](https://thespacedevs.com) | **Live** (CORS-enabled) |
-| Aircraft | [OpenSky Network](https://opensky-network.org) | Live attempt → **labeled simulation** fallback (OpenSky restricts CORS to its own origin) |
+| Aircraft | [adsb.lol](https://adsb.lol) / [adsb.fi](https://adsb.fi) ADS-B | **Live** via the bundled CORS proxy (`proxy/`); best-effort relay → **labeled simulation** fallback (feeds send no CORS header) |
 | Imagery | [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0, NASA-derived) | Bundled · 8K day (tiled pyramid) / 4K lights / 2K clouds |
+
+### Live air traffic (ADS-B)
+
+Every free ADS-B feed (and OpenSky) sends no `Access-Control-Allow-Origin` header, so a static site cannot read it from the browser. `proxy/worker.js` is a free **Cloudflare Worker** that fetches adsb.lol / adsb.fi server-side, merges several busy regions, and returns CORS-enabled JSON. Deploy it (`cd proxy && npx wrangler deploy`), then point the app at the URL via `FLIGHT_PROXY_URL` in `src/lib/data.ts` or `localStorage['orbital.flightProxy']`. Full steps in [`proxy/README.md`](proxy/README.md). Without a proxy the app falls back to a labeled simulation — never presented as live.
 
 ## Run locally
 
@@ -83,7 +87,7 @@ public/textures/  bundled Earth day/night/clouds + starfield cubemap
 
 ## Attribution
 
-Imagery: NASA Blue Marble / Black Marble (via the three-globe & three.js example assets). Orbital elements: CelesTrak. Launch data: The Space Devs / Launch Library 2. Air traffic: OpenSky Network. Built on CesiumJS.
+Imagery: Solar System Scope (CC BY 4.0, NASA-derived). Orbital elements: CelesTrak. Launch data: The Space Devs / Launch Library 2. Air traffic: adsb.lol / adsb.fi community ADS-B aggregators and their feeders. Built on CesiumJS.
 
 ---
 

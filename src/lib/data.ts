@@ -227,45 +227,111 @@ export async function fetchLaunches(): Promise<{ launches: LaunchInfo[]; status:
   }
 }
 
-/** Attempt live OpenSky. Returns null when blocked (CORS) or unavailable. */
-export async function fetchLiveAircraft(): Promise<TrackObject[] | null> {
+// ---------------------------------------------------------------------------
+// Live air traffic: real ADS-B transponder data (adsb.lol / adsb.fi).
+//
+// Every free ADS-B feed blocks cross-origin browser reads (no CORS header),
+// so a static site cannot fetch them directly. Two paths are tried in order:
+//   1. A dedicated CORS proxy — deploy proxy/worker.js (a free Cloudflare
+//      Worker) and set FLIGHT_PROXY_URL / localStorage['orbital.flightProxy'].
+//      This is the reliable LIVE path.
+//   2. A best-effort public CORS relay, used only when no proxy is configured.
+// If neither yields data the engine falls back to clearly-labeled simulated
+// great-circle traffic (SimTraffic below). Nothing is ever passed off as live.
+// ---------------------------------------------------------------------------
+
+/** Optional dedicated CORS proxy URL. Deploy proxy/worker.js and set it here,
+ *  or at runtime via localStorage['orbital.flightProxy'], for reliable live ADS-B. */
+const FLIGHT_PROXY_URL = '';
+
+function flightProxyUrl(): string {
   try {
-    const text = await fetchText('https://opensky-network.org/api/states/all', 8000);
-    const json = JSON.parse(text);
-    const states: any[] = json.states || [];
-    const out: TrackObject[] = [];
-    for (const s of states) {
-      const lon = s[5];
-      const lat = s[6];
-      if (typeof lat !== 'number' || typeof lon !== 'number') continue;
-      const callsign = (s[1] || '').trim() || (s[0] || '').toUpperCase();
-      out.push({
-        id: `live-${s[0]}`,
-        category: 'aircraft',
-        name: callsign,
-        subtitle: s[2] || 'Unknown origin',
-        lat,
-        lon,
-        alt: num(s[13] ?? s[7]) ,
-        heading: num(s[10]),
-        speed: num(s[9]),
-        simulated: false,
-        color: '#ffd23e',
-        callsign,
-        squawk: s[14] || undefined,
-        onGround: !!s[8],
-        country: s[2] || undefined,
-      });
-      if (out.length >= 1500) break;
-    }
+    const override = localStorage.getItem('orbital.flightProxy');
+    if (override) return override;
+  } catch { /* storage unavailable */ }
+  return FLIGHT_PROXY_URL;
+}
+
+/** Map an ADS-B v2 aircraft array (adsb.lol / adsb.fi / ADSBx format) to tracks. */
+function adsbToTrack(ac: any[]): TrackObject[] {
+  const out: TrackObject[] = [];
+  const seen = new Set<string>();
+  for (const a of ac) {
+    if (!a || typeof a.lat !== 'number' || typeof a.lon !== 'number') continue;
+    const hex = String(a.hex || '').toLowerCase();
+    if (!hex || seen.has(hex)) continue;
+    seen.add(hex);
+    const callsign = String(a.flight || '').trim() || String(a.r || '').trim() || hex.toUpperCase();
+    const onGround = a.alt_baro === 'ground';
+    const altFt = typeof a.alt_baro === 'number' ? a.alt_baro : (typeof a.alt_geom === 'number' ? a.alt_geom : 0);
+    const type = String(a.t || '').trim();
+    const reg = String(a.r || '').trim();
+    out.push({
+      id: `live-${hex}`,
+      category: 'aircraft',
+      name: callsign,
+      subtitle: [type, reg].filter(Boolean).join(' · ') || 'ADS-B target',
+      lat: a.lat,
+      lon: a.lon,
+      alt: onGround ? 0 : altFt * 0.3048, // feet -> metres
+      heading: Number(a.track) || 0,
+      speed: (Number(a.gs) || 0) * 0.514444, // knots -> m/s
+      simulated: false,
+      color: '#ffd23e',
+      callsign,
+      squawk: a.squawk ? String(a.squawk) : undefined,
+      onGround,
+    });
+    if (out.length >= 600) break;
+  }
+  return out;
+}
+
+/** Reliable path: a dedicated CORS proxy that aggregates ADS-B server-side. */
+async function fetchViaProxy(): Promise<TrackObject[] | null> {
+  const url = flightProxyUrl();
+  if (!url) return null;
+  try {
+    const json = JSON.parse(await fetchText(url, 15000));
+    const out = adsbToTrack(json.ac || json.aircraft || []);
     return out.length ? out : null;
   } catch {
     return null;
   }
 }
 
+/** Best-effort path: a public CORS relay in front of adsb.lol. Shared relays are
+ *  rate-limited / intermittent, so this is opportunistic only. Small radii keep
+ *  each response under the relay's size cap; a truncated body fails JSON.parse
+ *  and that region is simply skipped. */
+const RELAY_REGIONS: Array<[number, number, number]> = [
+  [40.6, -73.8, 60], // New York
+  [51.5, -0.1, 60],  // London
+];
+async function fetchViaRelay(): Promise<TrackObject[] | null> {
+  const results = await Promise.allSettled(
+    RELAY_REGIONS.map(async ([lat, lon, r]) => {
+      const target = `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}`;
+      const url = `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`;
+      const json = JSON.parse(await fetchText(url, 8000));
+      return (json.ac || []) as any[];
+    }),
+  );
+  const merged: any[] = [];
+  for (const r of results) if (r.status === 'fulfilled') merged.push(...r.value);
+  const out = adsbToTrack(merged);
+  return out.length ? out : null;
+}
+
+/** Attempt live ADS-B. Returns null when no live source is reachable. */
+export async function fetchLiveAircraft(): Promise<TrackObject[] | null> {
+  const viaProxy = await fetchViaProxy();
+  if (viaProxy) return viaProxy;
+  return fetchViaRelay();
+}
+
 // ---------------------------------------------------------------------------
-// Simulated air traffic (used when OpenSky is unreachable from the browser).
+// Simulated air traffic (used when live ADS-B is unreachable from the browser).
 // Aircraft fly great-circle routes between real-world airports.
 // ---------------------------------------------------------------------------
 

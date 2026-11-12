@@ -61,6 +61,8 @@ export class OrbitalEngine {
   private aircraft: TrackObject[] = [];
   private sim: SimTraffic | null = null;
   private aircraftLive = false;
+  private lastAircraftRefresh = 0;
+  private aircraftRefreshing = false;
   private launches: LaunchInfo[] = [];
   private objects = new Map<string, TrackObject>();
 
@@ -247,21 +249,38 @@ export class OrbitalEngine {
   }
 
   private async loadAircraft(): Promise<void> {
-    const live = await fetchLiveAircraft();
-    let status;
-    if (live && live.length) {
-      this.aircraft = live;
-      this.aircraftLive = true;
-      this.sim = null;
-      status = { source: 'OpenSky Network', state: 'live' as const, message: `${live.length} live transponders`, count: live.length, updated: Date.now() };
-    } else {
-      this.sim = new SimTraffic(320);
-      this.aircraft = this.sim.objects;
-      this.aircraftLive = false;
-      status = { source: 'OpenSky Network', state: 'simulated' as const, message: 'Live feed blocked (CORS) · simulated great-circle traffic', count: this.aircraft.length, updated: Date.now() };
-    }
+    // Populate simulated traffic immediately so the globe is never empty, then
+    // upgrade to live ADS-B in the background (the live fetch can be slow).
+    this.sim = new SimTraffic(320);
+    this.aircraft = this.sim.objects;
+    this.aircraftLive = false;
     this.buildAircraft();
-    setState({ statuses: { ...getState().statuses, aircraft: status } });
+    this.lastAircraftRefresh = performance.now();
+    setState({ statuses: { ...getState().statuses, aircraft: { source: 'ADS-B · adsb.lol', state: 'simulated' as const, message: 'Simulated traffic · acquiring live ADS-B…', count: this.aircraft.length, updated: Date.now() } } });
+    void this.refreshLiveAircraft();
+  }
+
+  /** Fetch live ADS-B and apply it when available. A failed refresh never
+   *  downgrades an already-live feed to simulation — it keeps dead-reckoning the
+   *  last real positions until the next successful poll. */
+  private async refreshLiveAircraft(): Promise<void> {
+    if (this.aircraftRefreshing) return;
+    this.aircraftRefreshing = true;
+    try {
+      const live = await fetchLiveAircraft();
+      if (live && live.length) {
+        this.aircraft = live;
+        this.aircraftLive = true;
+        this.sim = null;
+        this.buildAircraft();
+        setState({ statuses: { ...getState().statuses, aircraft: { source: 'ADS-B · adsb.lol', state: 'live' as const, message: `${live.length} live transponders`, count: live.length, updated: Date.now() } } });
+        this.pushCounters();
+      } else if (!this.aircraftLive) {
+        setState({ statuses: { ...getState().statuses, aircraft: { source: 'ADS-B · adsb.lol', state: 'simulated' as const, message: 'Live ADS-B unreachable · simulated great-circle traffic', count: this.aircraft.length, updated: Date.now() } } });
+      }
+    } finally {
+      this.aircraftRefreshing = false;
+    }
   }
 
   private buildSatellites(sats: SatRecord[]): void {
@@ -356,6 +375,10 @@ export class OrbitalEngine {
       this.pushCounters();
     }
     if (now - this.lastOrbitRefresh > 30000) this.refreshOrbits(false);
+    if (now - this.lastAircraftRefresh > 30000) {
+      this.lastAircraftRefresh = now;
+      void this.refreshLiveAircraft();
+    }
   }
 
   private updateSatellites(date: Date): void {
